@@ -68,7 +68,7 @@ type OCRResponse struct {
 	} `json:"usage_info"`
 }
 
-func (client Client) Upload(file io.ReadCloser, fileName string) (res UploadResponse, err error) {
+func (client Client) Upload(file io.Reader, fileName string) (res UploadResponse, err error) {
 	var result UploadResponse
 	const errPrefix = "client.Upload"
 
@@ -144,7 +144,7 @@ func (client Client) GetOCRResult(uri string, docType documentType) (OCRResponse
 	return result, nil
 }
 
-func (client Client) ProcessFile(file io.ReadCloser, fileName string, docType documentType) (*OCRResponse, error) {
+func (client Client) ProcessFile(file io.Reader, fileName string, docType documentType) (*OCRResponse, error) {
 	formatError := func(err error) error {
 		return fmt.Errorf("mistral.ProcessFile %s: %w", fileName, err)
 	}

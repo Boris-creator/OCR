@@ -8,6 +8,7 @@ import (
 	"tele/internal/api/media"
 	"tele/internal/config"
 	"tele/internal/mistral"
+	"tele/internal/s3"
 	"tele/internal/tg"
 )
 
@@ -16,6 +17,8 @@ type App struct {
 	bot *tg.Bot
 	mc  *mistral.Client
 
+	s3 *s3.Storage
+
 	mediaHandler *media.Handler
 }
 
@@ -23,16 +26,23 @@ func New(cfg *config.Config) (*App, error) {
 	app := &App{
 		cfg: cfg,
 	}
+
 	bot, err := tg.New(cfg.Bot)
 	if err != nil {
 		return nil, fmt.Errorf("tg.New: %w", err)
 	}
 	app.bot = bot
 
-	mc := mistral.New(cfg.Mistral)
-	app.mc = &mc
+	mistralClient := mistral.New(cfg.Mistral)
+	app.mc = &mistralClient
 
-	apiMediaHandler := media.New(*app.mc)
+	minioClient, err := s3.NewClient(app.cfg.S3, false)
+	if err != nil {
+		return nil, fmt.Errorf("minio.NewClient: %w", err)
+	}
+	app.s3 = s3.New(*minioClient, app.cfg.S3)
+
+	apiMediaHandler := media.New(*app.mc, *app.s3)
 	app.mediaHandler = apiMediaHandler
 
 	return app, nil

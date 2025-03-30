@@ -13,9 +13,17 @@ type MistralConfig struct {
 	Token string `envconfig:"MISTRAL_API_KEY" required:"true"`
 }
 
+type S3Config struct {
+	AccessKeyID     string `envconfig:"S3_ACCESS_KEY_ID" required:"true"`
+	SecretAccessKey string `envconfig:"S3_SECRET_ACCESS_KEY" required:"true"`
+	Endpoint        string `envconfig:"S3_ENDPOINT" required:"true"`
+	BucketName      string `envconfig:"S3_BUCKET_NAME" required:"true"`
+}
+
 type Config struct {
 	Bot     BotConfig
 	Mistral MistralConfig
+	S3      S3Config
 }
 
 func Load() (*Config, error) {

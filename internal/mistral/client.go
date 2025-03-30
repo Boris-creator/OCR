@@ -46,7 +46,7 @@ func newRequest[T any](
 
 func newFileUploadRequest(
 	uri string,
-	file io.ReadCloser,
+	file io.Reader,
 	fileName string,
 	params map[string]string,
 ) (*http.Request, error) {
