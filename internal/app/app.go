@@ -1,10 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"gopkg.in/telebot.v4"
 	"log"
+	"log/slog"
+	"os"
 	"tele/internal/api/media"
 	"tele/internal/config"
 	"tele/internal/mistral"
@@ -18,14 +22,35 @@ type App struct {
 	mc  *mistral.Client
 
 	s3 *s3.Storage
+	db *pgxpool.Pool
 
 	mediaHandler *media.Handler
+
+	logger *slog.Logger
 }
 
 func New(cfg *config.Config) (*App, error) {
 	app := &App{
 		cfg: cfg,
 	}
+
+	app.logger = slog.New(
+		slog.NewJSONHandler(
+			os.Stdout,
+			&slog.HandlerOptions{Level: slog.LevelDebug},
+		),
+	)
+
+	dbCfg := app.cfg.DB
+	pool, err := pgxpool.New(context.TODO(), fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
+		dbCfg.User, dbCfg.Password,
+		dbCfg.Host, dbCfg.Port,
+		dbCfg.Name,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("pgxpool.New: %w", err)
+	}
+	app.db = pool
 
 	bot, err := tg.New(cfg.Bot)
 	if err != nil {
@@ -42,7 +67,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	app.s3 = s3.New(*minioClient, app.cfg.S3)
 
-	apiMediaHandler := media.New(*app.mc, *app.s3)
+	apiMediaHandler := media.New(app.bot.Bot, app.mc, app.s3, app.db, app.logger)
 	app.mediaHandler = apiMediaHandler
 
 	return app, nil
@@ -51,6 +76,15 @@ func New(cfg *config.Config) (*App, error) {
 func (app *App) start() {
 	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle)
 	app.bot.Start()
+}
+
+func (app *App) stop() {
+	if app.db != nil {
+		app.db.Close()
+	}
+	if app.bot != nil {
+		app.bot.Stop()
+	}
 }
 
 func Start() error {
@@ -66,6 +100,7 @@ func Start() error {
 	}
 
 	log.Println("starting bot")
+	defer app.stop()
 
 	app.start()
 

@@ -20,10 +20,19 @@ type S3Config struct {
 	BucketName      string `envconfig:"S3_BUCKET_NAME" required:"true"`
 }
 
+type DBConfig struct {
+	Host     string `required:"true"`
+	Port     string `required:"true"`
+	User     string `required:"true"`
+	Password string `required:"true"`
+	Name     string `required:"true"`
+}
+
 type Config struct {
 	Bot     BotConfig
 	Mistral MistralConfig
 	S3      S3Config
+	DB      DBConfig
 }
 
 func Load() (*Config, error) {

@@ -3,43 +3,94 @@ package media
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"gopkg.in/telebot.v4"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path"
+	"tele/internal/db/query"
 	"tele/internal/mistral"
 	"tele/internal/s3"
 )
 
 type Handler struct {
-	mc mistral.Client
-	s3 s3.Storage
+	bot    *telebot.Bot
+	mc     *mistral.Client
+	s3     *s3.Storage
+	db     *pgxpool.Pool
+	logger *slog.Logger
 }
 
-func New(mc mistral.Client, s3 s3.Storage) *Handler {
-	return &Handler{mc, s3}
+func New(b *telebot.Bot, mc *mistral.Client, s3 *s3.Storage, db *pgxpool.Pool, logger *slog.Logger) *Handler {
+	return &Handler{b, mc, s3, db, logger}
 }
 
-func (handler Handler) Handle(ctx telebot.Context) error {
+func (handler *Handler) Handle(ctx telebot.Context) error {
 	const errPrefix = "bot.Handle"
-	const maxMsgTextLen = 1 << 12
 
-	bot := ctx.Bot()
+	c := context.TODO()
+
 	doc := ctx.Message().Photo
 	if doc == nil {
 		return nil
 	}
 
+	text, err := handler.getImageOCR(c, doc, ctx.Chat().ID, func(err error, msg string) error {
+		return fmt.Errorf("%s: %s: %v", errPrefix, msg, err)
+	})
+	if err != nil {
+		return handler.internalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
+	}
+	if len(text) == 0 {
+		return handler.noTextFoundResponse(ctx)
+	}
+
+	return handler.successResponse(ctx, text)
+}
+
+func (handler *Handler) successResponse(ctx telebot.Context, text string) error {
+	const maxMsgTextLen = 1 << 12
+
+	symbols := []rune(text)
+	handler.logger.Debug(string(symbols))
+
+	return ctx.Reply(string(symbols[:min(len(symbols), maxMsgTextLen)]))
+}
+
+func (handler *Handler) noTextFoundResponse(ctx telebot.Context) error {
+	return ctx.Reply("Text not found")
+}
+
+func (handler *Handler) internalErrorResponse(ctx telebot.Context, err error) error {
+	handler.logger.Error(err.Error())
+	return ctx.Reply("Internal error")
+}
+
+func (handler *Handler) getImageOCR(
+	ctx context.Context,
+	doc *telebot.Photo,
+	chatId int64,
+	wrapError func(error, string) error,
+) (string, error) {
+	var res string
+
+	bot := handler.bot
+
 	userFile, err := bot.FileByID(doc.FileID)
 	if err != nil {
-		return fmt.Errorf("%s: bot.FileByID %s: %w", errPrefix, doc.FileID, err)
+		return res, fmt.Errorf("bot.FileByID %s: %w", doc.FileID, err)
 	}
 
 	rc, err := bot.File(&userFile)
 	if err != nil {
-		return fmt.Errorf("%s: bot.File: %w", errPrefix, err)
+		return res, fmt.Errorf("bot.File: %w", err)
 	}
 	defer func() {
 		_ = rc.Close()
@@ -47,47 +98,102 @@ func (handler Handler) Handle(ctx telebot.Context) error {
 
 	fileBytes, err := io.ReadAll(rc)
 	if err != nil {
-		return fmt.Errorf("%s: read file: %s", errPrefix, err)
+		return res, fmt.Errorf("read file: %s", err)
 	}
 
-	go func() {
-		file, err := os.CreateTemp("", "*")
+	tx, err := handler.db.Begin(ctx)
+	if err != nil {
+		return res, fmt.Errorf("db.Begin: %w", err)
+	}
+	defer func(err error) {
 		if err != nil {
-			log.Printf("%s: os.CreateTemp: %v\n", errPrefix, err)
-			return
+			_ = tx.Rollback(ctx)
 		}
-		defer func() {
-			_ = file.Close()
-			_ = os.Remove(file.Name())
-		}()
+	}(err)
 
-		_, _ = io.Copy(file, bytes.NewReader(fileBytes))
+	queryHandler := query.New(tx)
 
-		err = handler.s3.UploadFromLocal(context.Background(), file.Name(), fmt.Sprintf("%s%s", doc.FileID, path.Ext(userFile.FilePath)))
-		if err != nil {
-			log.Printf("%s: s3.UploadFromLocal: %s\n", errPrefix, err.Error())
-		}
-	}()
+	hash := getFileCheckSum(fileBytes)
+
+	document, err := queryHandler.GetDocumentByHash(ctx, query.GetDocumentByHashParams{
+		Hash:   pgtype.UUID{Bytes: hash, Valid: true},
+		ChatID: chatId,
+	})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		handler.logger.Error(wrapError(err, "query.GetDocumentByHash").Error())
+	}
+	if err == nil {
+		var ocr mistral.OCRResponse
+		_ = json.Unmarshal(document.Ocr, &ocr)
+		text, _ := getOCRText(ocr)
+
+		return text, nil
+	}
 
 	ocr, err := handler.mc.ProcessFile(bytes.NewReader(fileBytes), doc.UniqueID, mistral.ImageUrl)
 	if err != nil {
-		return handler.internalErrorResponse(ctx)
+		return res, fmt.Errorf("mistral.ProcessFile: %w", err)
 	}
+
+	ocrData, _ := json.Marshal(ocr)
+	newDocumentId, savingErr := queryHandler.CreateDocument(ctx, query.CreateDocumentParams{
+		FileID: doc.FileID,
+		ChatID: chatId,
+		Hash:   pgtype.UUID{Bytes: hash, Valid: true},
+		Ocr:    ocrData,
+	})
+
+	if savingErr != nil {
+		handler.logger.Error(savingErr.Error())
+	}
+
+	if savingErr == nil {
+		go func() {
+			file, err := os.CreateTemp("", "*")
+
+			defer func(err error) {
+				if err != nil {
+					handler.logger.Error(err.Error())
+				}
+			}(err)
+
+			if err != nil {
+				err = wrapError(err, "os.CreateTemp")
+				return
+			}
+			defer func() {
+				_ = file.Close()
+				_ = os.Remove(file.Name())
+			}()
+
+			_, _ = io.Copy(file, bytes.NewReader(fileBytes))
+
+			err = handler.s3.UploadFromLocal(ctx, file.Name(), fmt.Sprintf("%d%s", newDocumentId, path.Ext(userFile.FilePath)))
+			if err != nil {
+				err = wrapError(err, "s3.UploadFromLocal")
+				return
+			}
+
+			err = tx.Commit(ctx)
+			if err != nil {
+				err = wrapError(err, "tx.Commit")
+			}
+		}()
+	}
+
+	res, _ = getOCRText(*ocr)
+
+	return res, nil
+}
+
+func getFileCheckSum(file []byte) [16]byte {
+	return md5.Sum(file)
+}
+
+func getOCRText(ocr mistral.OCRResponse) (string, bool) {
 	if len(ocr.Pages) == 0 {
-		return handler.noTextFoundResponse(ctx)
+		return "", false
 	}
 
-	res := ocr.Pages[0].Markdown
-	text := []rune(res)
-	log.Println(string(text))
-
-	return ctx.Reply(string(text[:min(len(text), maxMsgTextLen)]))
-}
-
-func (handler Handler) noTextFoundResponse(ctx telebot.Context) error {
-	return ctx.Reply("Text not found")
-}
-
-func (handler Handler) internalErrorResponse(ctx telebot.Context) error {
-	return ctx.Reply("Internal error")
+	return ocr.Pages[0].Markdown, true
 }
