@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"tele/internal/api/media"
+	"tele/internal/api/middleware"
 	"tele/internal/config"
 	"tele/internal/mistral"
 	"tele/internal/s3"
@@ -74,7 +75,7 @@ func New(cfg *config.Config) (*App, error) {
 }
 
 func (app *App) start() {
-	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle)
+	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle, middleware.ImageValidator)
 	app.bot.Start()
 }
 
