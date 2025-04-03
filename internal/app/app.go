@@ -9,6 +9,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"tele/internal/api/about"
 	"tele/internal/api/media"
 	"tele/internal/api/middleware"
 	"tele/internal/config"
@@ -26,6 +27,7 @@ type App struct {
 	db *pgxpool.Pool
 
 	mediaHandler *media.Handler
+	aboutHandler *about.Handler
 
 	logger *slog.Logger
 }
@@ -68,14 +70,14 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	app.s3 = s3.New(*minioClient, app.cfg.S3)
 
-	apiMediaHandler := media.New(app.bot.Bot, app.mc, app.s3, app.db, app.logger)
-	app.mediaHandler = apiMediaHandler
+	app.mediaHandler = media.New(app.bot.Bot, app.mc, app.s3, app.db, app.logger)
+	app.aboutHandler = about.New(app.bot.Bot, app.logger)
 
 	return app, nil
 }
 
 func (app *App) start() {
-	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle, middleware.ImageValidator)
+	app.setupHandlers()
 	app.bot.Start()
 }
 
@@ -86,6 +88,11 @@ func (app *App) stop() {
 	if app.bot != nil {
 		app.bot.Stop()
 	}
+}
+
+func (app *App) setupHandlers() {
+	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle, middleware.ImageValidator)
+	app.bot.Handle("/about", app.aboutHandler.Handle)
 }
 
 func Start() error {

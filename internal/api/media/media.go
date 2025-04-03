@@ -15,25 +15,28 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"tele/internal/api"
 	"tele/internal/db/query"
 	"tele/internal/mistral"
 	"tele/internal/s3"
 )
 
 type Handler struct {
-	bot    *telebot.Bot
-	mc     *mistral.Client
-	s3     *s3.Storage
-	db     *pgxpool.Pool
-	logger *slog.Logger
+	api.Handler
+	mc *mistral.Client
+	s3 *s3.Storage
+	db *pgxpool.Pool
 }
 
 func New(b *telebot.Bot, mc *mistral.Client, s3 *s3.Storage, db *pgxpool.Pool, logger *slog.Logger) *Handler {
-	return &Handler{b, mc, s3, db, logger}
+	return &Handler{
+		*api.New(b, logger),
+		mc, s3, db,
+	}
 }
 
 func (handler *Handler) Handle(ctx telebot.Context) error {
-	const errPrefix = "bot.Handle"
+	const errPrefix = "media.Handle"
 
 	c := context.TODO()
 
@@ -46,7 +49,7 @@ func (handler *Handler) Handle(ctx telebot.Context) error {
 		return fmt.Errorf("%s: %s: %v", errPrefix, msg, err)
 	})
 	if err != nil {
-		return handler.internalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
+		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
 	}
 	if len(text) == 0 {
 		return handler.noTextFoundResponse(ctx)
@@ -59,18 +62,13 @@ func (handler *Handler) successResponse(ctx telebot.Context, text string) error 
 	const maxMsgTextLen = 1 << 12
 
 	symbols := []rune(text)
-	handler.logger.Debug(string(symbols))
+	handler.Logger.Debug(string(symbols))
 
 	return ctx.Reply(string(symbols[:min(len(symbols), maxMsgTextLen)]))
 }
 
 func (handler *Handler) noTextFoundResponse(ctx telebot.Context) error {
 	return ctx.Reply("Text not found")
-}
-
-func (handler *Handler) internalErrorResponse(ctx telebot.Context, err error) error {
-	handler.logger.Error(err.Error())
-	return ctx.Reply("Internal error")
 }
 
 func (handler *Handler) getImageOCR(
@@ -81,7 +79,7 @@ func (handler *Handler) getImageOCR(
 ) (string, error) {
 	var res string
 
-	bot := handler.bot
+	bot := handler.Bot
 
 	userFile, err := bot.FileByID(doc.FileID)
 	if err != nil {
@@ -120,7 +118,7 @@ func (handler *Handler) getImageOCR(
 		ChatID: chatId,
 	})
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		handler.logger.Error(wrapError(err, "query.GetDocumentByHash").Error())
+		handler.Logger.Error(wrapError(err, "query.GetDocumentByHash").Error())
 	}
 	if err == nil {
 		var ocr mistral.OCRResponse
@@ -144,7 +142,7 @@ func (handler *Handler) getImageOCR(
 	})
 
 	if savingErr != nil {
-		handler.logger.Error(savingErr.Error())
+		handler.Logger.Error(savingErr.Error())
 	}
 
 	if savingErr == nil {
@@ -153,7 +151,7 @@ func (handler *Handler) getImageOCR(
 
 			defer func(err error) {
 				if err != nil {
-					handler.logger.Error(err.Error())
+					handler.Logger.Error(err.Error())
 				}
 			}(err)
 
