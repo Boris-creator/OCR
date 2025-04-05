@@ -29,6 +29,9 @@ type App struct {
 	mediaHandler *media.Handler
 	aboutHandler *about.Handler
 
+	mediaValidatorMw *middleware.ImageValidator
+	activityMw       *middleware.Activity
+
 	logger *slog.Logger
 }
 
@@ -73,6 +76,9 @@ func New(cfg *config.Config) (*App, error) {
 	app.mediaHandler = media.New(app.bot.Bot, app.mc, app.s3, app.db, app.logger)
 	app.aboutHandler = about.New(app.bot.Bot, app.logger)
 
+	app.mediaValidatorMw = middleware.NewImageValidator()
+	app.activityMw = middleware.NewActivityMiddleware(app.db, app.logger)
+
 	return app, nil
 }
 
@@ -91,7 +97,9 @@ func (app *App) stop() {
 }
 
 func (app *App) setupHandlers() {
-	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle, middleware.ImageValidator)
+	app.bot.Use(app.activityMw.RegisterOrRecordRequest)
+
+	app.bot.Handle(telebot.OnMedia, app.mediaHandler.Handle, app.mediaValidatorMw.Validate)
 	app.bot.Handle("/about", app.aboutHandler.Handle)
 }
 

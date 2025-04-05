@@ -11,6 +11,7 @@ import (
 type Chat struct {
 	UserID    int64
 	CreatedAt pgtype.Timestamptz
+	ActiveAt  pgtype.Timestamptz
 }
 
 type Document struct {

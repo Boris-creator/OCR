@@ -5,7 +5,13 @@ import (
 	"gopkg.in/telebot.v4"
 )
 
-func ImageValidator(next telebot.HandlerFunc) telebot.HandlerFunc {
+type ImageValidator struct{}
+
+func NewImageValidator() *ImageValidator {
+	return &ImageValidator{}
+}
+
+func (ImageValidator) Validate(next telebot.HandlerFunc) telebot.HandlerFunc {
 	const maxImageSizeKilobytes = 5000 * 1000
 
 	return func(c telebot.Context) error {
