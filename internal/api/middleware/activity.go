@@ -3,28 +3,28 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"gopkg.in/telebot.v4"
 	"log/slog"
-	"tele/internal/db/query"
 )
 
-type Activity struct {
-	baseMiddleware
+type chatRepository interface {
+	CreateOrUpdateChat(ctx context.Context, int65 int64) error
 }
 
-func NewActivityMiddleware(db *pgxpool.Pool, logger *slog.Logger) *Activity {
-	return &Activity{
-		baseMiddleware{db, logger},
-	}
+type Activity struct {
+	repo   chatRepository
+	logger *slog.Logger
+}
+
+func NewActivityMiddleware(chatRepo chatRepository, logger *slog.Logger) *Activity {
+	return &Activity{chatRepo, logger}
 }
 
 func (mw Activity) RegisterOrRecordRequest(next telebot.HandlerFunc) telebot.HandlerFunc {
 	return func(c telebot.Context) error {
 		chatId := c.Chat().ID
-		queryHandler := query.New(mw.db)
 
-		err := queryHandler.CreateOrUpdateChat(context.Background(), chatId)
+		err := mw.repo.CreateOrUpdateChat(context.Background(), chatId)
 		if err != nil {
 			mw.logger.Warn(fmt.Sprintf("middleware.RegisterOrRecordRequest: %v", err))
 		}

@@ -106,7 +106,7 @@ func (client Client) GetSignedURL(fileUuid string) (SignedURLResponse, error) {
 	uri, _ := url.Parse(urlPath)
 	uri.RawQuery = "expiry=24"
 
-	request, err := newRequest[any](uri.String(), http.MethodGet, nil, client.cfg.Token)
+	request, err := newRequest(uri.String(), http.MethodGet, nil, client.cfg.Token)
 	if err != nil {
 		return result, fmt.Errorf("%s: make request: %w", errPrefix, err)
 	}

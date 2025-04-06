@@ -4,28 +4,32 @@ import (
 	"fmt"
 	"gopkg.in/telebot.v4"
 	"log/slog"
-	"os/exec"
 	"tele/internal/api"
 )
 
-type Handler struct {
-	api.Handler
+type aboutService interface {
+	GetSourceCodeUrl() (string, error)
 }
 
-func New(bot *telebot.Bot, logger *slog.Logger) *Handler {
+type Handler struct {
+	api.Handler
+	aboutService aboutService
+}
+
+func New(bot *telebot.Bot, aboutService aboutService, logger *slog.Logger) *Handler {
 	return &Handler{
 		*api.New(bot, logger),
+		aboutService,
 	}
 }
 
 func (handler *Handler) Handle(ctx telebot.Context) error {
 	const errPrefix = "about.Handle"
 
-	cmd := exec.Command("git", "config", "--get", "remote.origin.url")
-	out, err := cmd.CombinedOutput()
+	out, err := handler.aboutService.GetSourceCodeUrl()
 	if err != nil {
-		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: command.Run %s: %s; %w", errPrefix, cmd.String(), out, err))
+		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
 	}
 
-	return ctx.Send(fmt.Sprintf("See my source code at %s", string(out)))
+	return ctx.Send(fmt.Sprintf("See my source code at %s", out))
 }

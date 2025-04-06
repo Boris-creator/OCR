@@ -21,10 +21,10 @@ var retryStatusCodes = map[int]struct{}{
 
 var recoverableHttpStatusError = errors.New("recoverable http status")
 
-func newRequest[T any](
+func newRequest(
 	uri string,
 	method string,
-	params *T,
+	params any,
 	apiToken string,
 ) (req *http.Request, err error) {
 	body := &bytes.Buffer{}
