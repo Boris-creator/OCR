@@ -6,26 +6,7 @@ import (
 	"gopkg.in/telebot.v4"
 	"log/slog"
 	"tele/internal/api"
-	"tele/internal/usecase/ocr"
 )
-
-type imageTextRecognizer interface {
-	GetImageOCR(ctx context.Context, file ocr.File, chatId int64) (string, error)
-}
-
-type file struct {
-	telebot.File
-}
-
-func (f file) Read(p []byte) (n int, err error) {
-	return f.FileReader.Read(p)
-}
-func (f file) Id() string {
-	return f.FileID
-}
-func (f file) Path() string {
-	return f.FilePath
-}
 
 type Handler struct {
 	api.Handler
@@ -47,6 +28,9 @@ func (handler *Handler) Handle(ctx telebot.Context) error {
 	imageFile, closeImageFile, err := handler.getImage(ctx)
 	if err != nil {
 		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
+	}
+	if imageFile == nil {
+		return nil
 	}
 	defer closeImageFile()
 

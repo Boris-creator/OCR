@@ -25,6 +25,8 @@ func newRepository(db *pgxpool.Pool) *baseRepository {
 
 var OutOfTransactionError = errors.New("out of transaction")
 
+//TODO: change WithTx signature
+
 func (repo *baseRepository) WithTx(ctx context.Context) (repoWithTx *baseRepository, err error) {
 	tx, err := repo.beginTx(ctx)
 	if err != nil {

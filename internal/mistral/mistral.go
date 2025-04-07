@@ -28,46 +28,6 @@ func New(cfg config.MistralConfig) Client {
 	}
 }
 
-type documentType string
-
-const (
-	DocumentUrl documentType = "document_url"
-	ImageUrl    documentType = "image_url"
-)
-
-type Request struct {
-	Model    string         `json:"model"`
-	Document map[string]any `json:"document"`
-}
-
-type UploadResponse struct {
-	ID       string `json:"id"`
-	Bytes    int64  `json:"bytes"`
-	Filename string `json:"filename"`
-}
-
-type SignedURLResponse struct {
-	URL string `json:"url"`
-}
-
-type OCRResponse struct {
-	Pages []struct {
-		Index      int    `json:"index"`
-		Markdown   string `json:"markdown"`
-		Images     []any  `json:"images"`
-		Dimensions struct {
-			Dpi    int `json:"dpi"`
-			Height int `json:"height"`
-			Width  int `json:"width"`
-		} `json:"dimensions"`
-	} `json:"pages"`
-	Model     string `json:"model"`
-	UsageInfo struct {
-		PagesProcessed int `json:"pages_processed"`
-		DocSizeBytes   int `json:"doc_size_bytes"`
-	} `json:"usage_info"`
-}
-
 func (client Client) Upload(file io.Reader, fileName string) (res UploadResponse, err error) {
 	var result UploadResponse
 	const errPrefix = "client.Upload"
@@ -144,7 +104,7 @@ func (client Client) GetOCRResult(uri string, docType documentType) (OCRResponse
 	return result, nil
 }
 
-func (client Client) ProcessFile(file io.Reader, fileName string, docType documentType) (*OCRResponse, error) {
+func (client Client) processFile(file io.Reader, fileName string, docType documentType) (*OCRResponse, error) {
 	formatError := func(err error) error {
 		return fmt.Errorf("mistral.ProcessFile %s: %w", fileName, err)
 	}
@@ -164,4 +124,8 @@ func (client Client) ProcessFile(file io.Reader, fileName string, docType docume
 	}
 
 	return &ocr, nil
+}
+
+func (client Client) GetImageOCR(file io.Reader, fileName string) (*OCRResponse, error) {
+	return client.processFile(file, fileName, imageUrl)
 }

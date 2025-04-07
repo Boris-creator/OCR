@@ -10,24 +10,26 @@ import (
 	"log/slog"
 	"os"
 	"path"
-	"tele/internal/mistral"
-	"tele/internal/s3"
 )
 
-type ImageTextRecognizer struct {
-	mc     *mistral.Client
-	s3     *s3.Storage
-	repo   documentRepository
-	logger *slog.Logger
+type ImageTextRecognizer[R ocrResult] struct {
+	worker  ocrService[R]
+	storage fileStorage
+	repo    documentRepository
+	logger  slog.Logger
 }
 
-func New(mc *mistral.Client, s3 *s3.Storage, repo documentRepository, logger *slog.Logger) *ImageTextRecognizer {
-	return &ImageTextRecognizer{mc, s3, repo, logger}
+func New[R ocrResult](w ocrService[R], storage fileStorage, repo documentRepository, logger slog.Logger) *ImageTextRecognizer[R] {
+	return &ImageTextRecognizer[R]{w, storage, repo, logger}
 }
 
-func (recognizer ImageTextRecognizer) GetImageOCR(
+func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 	ctx context.Context,
-	userFile File,
+	userFile interface {
+		io.Reader
+		Id() string
+		Path() string
+	},
 	chatId int64,
 ) (string, error) {
 	var res string
@@ -59,7 +61,7 @@ func (recognizer ImageTextRecognizer) GetImageOCR(
 		recognizer.logger.Error(wrapError(err, "query.GetDocumentByHash").Error())
 	}
 	if ok {
-		var ocr mistral.OCRResponse
+		var ocr R
 		_ = json.Unmarshal(document.Ocr, &ocr)
 		text, _ := getOCRText(ocr)
 
@@ -68,7 +70,7 @@ func (recognizer ImageTextRecognizer) GetImageOCR(
 
 	fileId := userFile.Id()
 
-	ocr, err := recognizer.mc.ProcessFile(bytes.NewReader(fileBytes), fileId, mistral.ImageUrl)
+	ocr, err := recognizer.worker.GetImageOCR(bytes.NewReader(fileBytes), fileId)
 	if err != nil {
 		return res, wrapError(err, "mistral.ProcessFile")
 	}
@@ -106,7 +108,7 @@ func (recognizer ImageTextRecognizer) GetImageOCR(
 
 			_, _ = io.Copy(file, bytes.NewReader(fileBytes))
 
-			err = recognizer.s3.UploadFromLocal(ctx, file.Name(), fmt.Sprintf("%d%s", newDocumentId, path.Ext(userFile.Path())))
+			err = recognizer.storage.UploadFromLocal(ctx, file.Name(), fmt.Sprintf("%d%s", newDocumentId, path.Ext(userFile.Path())))
 			if err != nil {
 				err = wrapError(err, "s3.UploadFromLocal")
 				return
@@ -119,7 +121,7 @@ func (recognizer ImageTextRecognizer) GetImageOCR(
 		}()
 	}
 
-	res, _ = getOCRText(*ocr)
+	res, _ = getOCRText(ocr)
 
 	return res, nil
 }
@@ -128,10 +130,7 @@ func getFileCheckSum(file []byte) [16]byte {
 	return md5.Sum(file)
 }
 
-func getOCRText(ocr mistral.OCRResponse) (string, bool) {
-	if len(ocr.Pages) == 0 {
-		return "", false
-	}
-
-	return ocr.Pages[0].Markdown, true
+func getOCRText(ocr ocrResult) (string, bool) {
+	text := ocr.Text()
+	return text, len(text) != 0
 }

@@ -32,7 +32,7 @@ type App struct {
 	documentRepository *repository.DocumentRepository
 	chatRepository     *repository.ChatRepository
 
-	mediaService    *ocr.ImageTextRecognizer
+	mediaService    *ocr.ImageTextRecognizer[*mistral.OCRResponse]
 	metadataService *metadata.About
 
 	mediaHandler *media.Handler
@@ -136,7 +136,7 @@ func (app *App) setupRepositories() *App {
 }
 
 func (app *App) setupServices() *App {
-	app.mediaService = ocr.New(app.mc, app.s3, app.documentRepository, app.logger)
+	app.mediaService = ocr.New(*app.mc, app.s3, app.documentRepository, *app.logger)
 	app.metadataService = metadata.New()
 
 	return app
