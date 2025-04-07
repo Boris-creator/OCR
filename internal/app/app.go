@@ -3,11 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
-	"gopkg.in/telebot.v4"
 	"log"
 	"log/slog"
+	"net"
 	"os"
 	"tele/internal/api/about"
 	"tele/internal/api/media"
@@ -19,6 +17,10 @@ import (
 	"tele/internal/tg"
 	"tele/internal/usecase/metadata"
 	"tele/internal/usecase/ocr"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
+	"gopkg.in/telebot.v4"
 )
 
 type App struct {
@@ -65,7 +67,7 @@ func New(cfg *config.Config) (*App, error) {
 }
 
 func (app *App) setup() error {
-	if err := app.setupDb(); err != nil {
+	if err := app.setupDB(); err != nil {
 		return fmt.Errorf("app.setupDb: %w", err)
 	}
 
@@ -86,18 +88,20 @@ func (app *App) setup() error {
 	return nil
 }
 
-func (app *App) setupDb() error {
+func (app *App) setupDB() error {
 	dbCfg := app.cfg.DB
-	pool, err := pgxpool.New(context.TODO(), fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
+	pool, err := pgxpool.New(context.TODO(), fmt.Sprintf("postgresql://%s:%s@%s/%s",
 		dbCfg.User, dbCfg.Password,
-		dbCfg.Host, dbCfg.Port,
+		net.JoinHostPort(dbCfg.Host, dbCfg.Port),
 		dbCfg.Name,
 	))
+
 	if err != nil {
 		return fmt.Errorf("pgxpool.New: %w", err)
 	}
 
 	app.db = pool
+
 	return nil
 }
 
@@ -108,6 +112,7 @@ func (app *App) setupBot() error {
 	}
 
 	app.bot = bot
+
 	return nil
 }
 
@@ -118,6 +123,7 @@ func (app *App) setupMinio() error {
 	}
 
 	app.s3 = s3.New(*minioClient, app.cfg.S3)
+
 	return nil
 }
 
@@ -165,6 +171,7 @@ func (app *App) stop() {
 	if app.db != nil {
 		app.db.Close()
 	}
+
 	if app.bot != nil {
 		app.bot.Stop()
 	}
@@ -179,6 +186,7 @@ func (app *App) bindHandlers() {
 
 func Start() error {
 	_ = godotenv.Load()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -190,6 +198,7 @@ func Start() error {
 	}
 
 	log.Println("starting bot")
+
 	defer app.stop()
 
 	app.start()

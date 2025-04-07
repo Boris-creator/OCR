@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"tele/internal/db/query"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"tele/internal/db/query"
 )
 
 type baseRepository struct {
@@ -23,7 +24,7 @@ func newRepository(db *pgxpool.Pool) *baseRepository {
 	}
 }
 
-var OutOfTransactionError = errors.New("out of transaction")
+var ErrOfTransaction = errors.New("out of transaction")
 
 //TODO: change WithTx signature
 
@@ -56,8 +57,9 @@ func (repo *baseRepository) BeginTx(ctx context.Context) error {
 
 func (repo *baseRepository) Commit(ctx context.Context) error {
 	if repo.tx == nil {
-		return OutOfTransactionError
+		return ErrOfTransaction
 	}
+
 	err := (*repo.tx).Commit(ctx)
 	if err != nil {
 		return fmt.Errorf("tx.Commit: %w", err)
@@ -71,8 +73,9 @@ func (repo *baseRepository) Commit(ctx context.Context) error {
 
 func (repo *baseRepository) Rollback(ctx context.Context) error {
 	if repo.tx == nil {
-		return OutOfTransactionError
+		return ErrOfTransaction
 	}
+
 	err := (*repo.tx).Rollback(ctx)
 	if err != nil {
 		return fmt.Errorf("tx.Rollback: %w", err)

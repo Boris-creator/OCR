@@ -2,8 +2,9 @@ package media
 
 import (
 	"context"
-	"gopkg.in/telebot.v4"
 	"io"
+
+	"gopkg.in/telebot.v4"
 )
 
 type imageTextRecognizer interface {
@@ -11,10 +12,10 @@ type imageTextRecognizer interface {
 		ctx context.Context,
 		file interface {
 			io.Reader
-			Id() string
+			ID() string
 			Path() string
 		},
-		chatId int64,
+		chatID int64,
 	) (string, error)
 }
 
@@ -22,10 +23,10 @@ type file struct {
 	telebot.File
 }
 
-func (f file) Read(p []byte) (n int, err error) {
+func (f file) Read(p []byte) (int, error) {
 	return f.FileReader.Read(p)
 }
-func (f file) Id() string {
+func (f file) ID() string {
 	return f.FileID
 }
 func (f file) Path() string {

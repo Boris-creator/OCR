@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"tele/internal/db/query"
+	"tele/internal/domain"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"tele/internal/db/query"
-	"tele/internal/domain"
 )
 
 type DocumentRepository struct {
@@ -30,6 +31,7 @@ func (repo DocumentRepository) GetDocumentByHash(ctx context.Context, hash [16]b
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
+
 	if err != nil {
 		return nil, false, fmt.Errorf("DocumentRepository.GetDocumentByHash: %w", err)
 	}
@@ -45,15 +47,16 @@ func (repo DocumentRepository) GetDocumentByHash(ctx context.Context, hash [16]b
 func (repo DocumentRepository) CreateDocument(
 	ctx context.Context,
 	document interface {
-		Params() (fileId string, chatId int64, hash [16]byte, ocr []byte)
+		Params() (fileID string, chatId int64, hash [16]byte, ocr []byte)
 	}) (createdDocumentId int64, err error) {
-	fileId, chatId, hash, ocr := document.Params()
+	fileID, chatId, hash, ocr := document.Params()
 	id, err := repo.queries.CreateDocument(ctx, query.CreateDocumentParams{
-		FileID: fileId,
+		FileID: fileID,
 		ChatID: chatId,
 		Hash:   pgtype.UUID{Bytes: hash, Valid: true},
 		Ocr:    ocr,
 	})
+
 	if err != nil {
 		return 0, fmt.Errorf("DocumentRepository.CreateDocument: %w", err)
 	}

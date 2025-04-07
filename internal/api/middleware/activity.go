@@ -3,12 +3,13 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"gopkg.in/telebot.v4"
 	"log/slog"
+
+	"gopkg.in/telebot.v4"
 )
 
 type chatRepository interface {
-	CreateOrUpdateChat(ctx context.Context, int65 int64) error
+	CreateOrUpdateChat(ctx context.Context, chatID int64) error
 }
 
 type Activity struct {
@@ -21,14 +22,14 @@ func NewActivityMiddleware(chatRepo chatRepository, logger *slog.Logger) *Activi
 }
 
 func (mw Activity) RegisterOrRecordRequest(next telebot.HandlerFunc) telebot.HandlerFunc {
-	return func(c telebot.Context) error {
-		chatId := c.Chat().ID
+	return func(tctx telebot.Context) error {
+		chatID := tctx.Chat().ID
 
-		err := mw.repo.CreateOrUpdateChat(context.Background(), chatId)
+		err := mw.repo.CreateOrUpdateChat(context.Background(), chatID)
 		if err != nil {
 			mw.logger.Warn(fmt.Sprintf("middleware.RegisterOrRecordRequest: %v", err))
 		}
 
-		return next(c)
+		return next(tctx)
 	}
 }

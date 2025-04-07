@@ -3,9 +3,10 @@ package media
 import (
 	"context"
 	"fmt"
-	"gopkg.in/telebot.v4"
 	"log/slog"
 	"tele/internal/api"
+
+	"gopkg.in/telebot.v4"
 )
 
 type Handler struct {
@@ -20,29 +21,32 @@ func New(b *telebot.Bot, logger *slog.Logger, ocr imageTextRecognizer) *Handler 
 	}
 }
 
-func (handler *Handler) Handle(ctx telebot.Context) error {
+func (handler *Handler) Handle(tctx telebot.Context) error {
 	const errPrefix = "media.Handle"
 
-	c := context.TODO()
+	ctx := context.TODO()
 
-	imageFile, closeImageFile, err := handler.getImage(ctx)
+	imageFile, closeImageFile, err := handler.getImage(tctx)
 	if err != nil {
-		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
+		return handler.InternalErrorResponse(tctx, fmt.Errorf("%s: %w", errPrefix, err))
 	}
+
 	if imageFile == nil {
 		return nil
 	}
+
 	defer closeImageFile()
 
-	text, err := handler.ocr.GetImageOCR(c, file{*imageFile}, ctx.Chat().ID)
+	text, err := handler.ocr.GetImageOCR(ctx, file{*imageFile}, tctx.Chat().ID)
 	if err != nil {
-		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: imageTextRecognizer.GetImageOCR: %w", errPrefix, err))
-	}
-	if len(text) == 0 {
-		return handler.noTextFoundResponse(ctx)
+		return handler.InternalErrorResponse(tctx, fmt.Errorf("%s: imageTextRecognizer.GetImageOCR: %w", errPrefix, err))
 	}
 
-	return handler.successResponse(ctx, text)
+	if len(text) == 0 {
+		return handler.noTextFoundResponse(tctx)
+	}
+
+	return handler.successResponse(tctx, text)
 }
 
 func (handler *Handler) successResponse(ctx telebot.Context, text string) error {
@@ -58,7 +62,7 @@ func (handler *Handler) noTextFoundResponse(ctx telebot.Context) error {
 	return ctx.Reply("Text not found")
 }
 
-func (handler *Handler) getImage(c telebot.Context) (file *telebot.File, close func(), err error) {
+func (handler *Handler) getImage(c telebot.Context) (file *telebot.File, closeFile func(), err error) {
 	doc := c.Message().Photo
 	if doc == nil {
 		return nil, nil, nil
@@ -70,14 +74,14 @@ func (handler *Handler) getImage(c telebot.Context) (file *telebot.File, close f
 		return nil, nil, fmt.Errorf("bot.FileByID %s: %w", doc.FileID, err)
 	}
 
-	rc, err := bot.File(&userFile)
+	frc, err := bot.File(&userFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("bot.File: %w", err)
 	}
 
-	userFile.FileReader = rc
+	userFile.FileReader = frc
 
 	return &userFile, func() {
-		_ = rc.Close()
+		_ = frc.Close()
 	}, nil
 }

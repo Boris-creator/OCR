@@ -27,7 +27,7 @@ func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 	ctx context.Context,
 	userFile interface {
 		io.Reader
-		Id() string
+		ID() string
 		Path() string
 	},
 	chatId int64,
@@ -60,6 +60,7 @@ func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 	if err != nil {
 		recognizer.logger.Error(wrapError(err, "query.GetDocumentByHash").Error())
 	}
+
 	if ok {
 		var ocr R
 		_ = json.Unmarshal(document.Ocr, &ocr)
@@ -68,16 +69,16 @@ func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 		return text, nil
 	}
 
-	fileId := userFile.Id()
+	fileID := userFile.ID()
 
-	ocr, err := recognizer.worker.GetImageOCR(bytes.NewReader(fileBytes), fileId)
+	ocr, err := recognizer.worker.GetImageOCR(ctx, bytes.NewReader(fileBytes), fileID)
 	if err != nil {
 		return res, wrapError(err, "mistral.ProcessFile")
 	}
 
 	ocrData, _ := json.Marshal(ocr)
-	newDocumentId, savingErr := rep.CreateDocument(ctx, documentParams{
-		fileId: fileId,
+	newDocumentID, savingErr := rep.CreateDocument(ctx, documentParams{
+		fileID: fileID,
 		chatId: chatId,
 		hash:   hash,
 		ocr:    ocrData,
@@ -101,6 +102,7 @@ func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 				err = wrapError(err, "os.CreateTemp")
 				return
 			}
+
 			defer func() {
 				_ = file.Close()
 				_ = os.Remove(file.Name())
@@ -108,7 +110,7 @@ func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 
 			_, _ = io.Copy(file, bytes.NewReader(fileBytes))
 
-			err = recognizer.storage.UploadFromLocal(ctx, file.Name(), fmt.Sprintf("%d%s", newDocumentId, path.Ext(userFile.Path())))
+			err = recognizer.storage.UploadFromLocal(ctx, file.Name(), fmt.Sprintf("%d%s", newDocumentID, path.Ext(userFile.Path())))
 			if err != nil {
 				err = wrapError(err, "s3.UploadFromLocal")
 				return
@@ -126,6 +128,7 @@ func (recognizer ImageTextRecognizer[R]) GetImageOCR(
 	return res, nil
 }
 
+//nolint:gosec
 func getFileCheckSum(file []byte) [16]byte {
 	return md5.Sum(file)
 }

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -16,13 +17,11 @@ func NewChatRepository(db *pgxpool.Pool) *ChatRepository {
 	}
 }
 
-func (repo ChatRepository) CreateOrUpdateChat(ctx context.Context, chatId int64) error {
-	err := repo.queries.CreateOrUpdateChat(ctx, chatId)
+func (repo ChatRepository) CreateOrUpdateChat(ctx context.Context, chatID int64) error {
+	err := repo.queries.CreateOrUpdateChat(ctx, chatID)
 	if err != nil {
 		return fmt.Errorf("repo.CreateOrUpdateChat: %w", err)
 	}
 
 	return nil
 }
-
-//CreateOrUpdateChat

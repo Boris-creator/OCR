@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+
 	"gopkg.in/telebot.v4"
 )
 
@@ -14,13 +15,14 @@ func NewImageValidator() *ImageValidator {
 func (ImageValidator) Validate(next telebot.HandlerFunc) telebot.HandlerFunc {
 	const maxImageSizeKilobytes = 5000 * 1000
 
-	return func(c telebot.Context) error {
-		doc := c.Message().Photo
+	return func(tctx telebot.Context) error {
+		doc := tctx.Message().Photo
 		if doc != nil && doc.FileSize > maxImageSizeKilobytes {
-			_ = c.Reply(fmt.Sprintf("Your image is too large. Maximum allowed size is %d :(", maxImageSizeKilobytes))
+			_ = tctx.Reply(fmt.Sprintf("Your image is too large. Maximum allowed size is %d :(", maxImageSizeKilobytes))
 
 			return nil
 		}
-		return next(c)
+
+		return next(tctx)
 	}
 }

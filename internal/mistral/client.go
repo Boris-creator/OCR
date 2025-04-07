@@ -2,13 +2,16 @@ package mistral
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/avast/retry-go"
+
 	"io"
 	"mime/multipart"
 	"net/http"
+
+	"github.com/avast/retry-go"
 )
 
 var retryStatusCodes = map[int]struct{}{
@@ -19,9 +22,10 @@ var retryStatusCodes = map[int]struct{}{
 	http.StatusGatewayTimeout:      {},
 }
 
-var recoverableHttpStatusError = errors.New("recoverable http status")
+var errRecoverableHTTPStatus = errors.New("recoverable error http status")
 
 func newRequest(
+	ctx context.Context,
 	uri string,
 	method string,
 	params any,
@@ -30,10 +34,12 @@ func newRequest(
 	body := &bytes.Buffer{}
 
 	if params != nil {
-		_ = json.NewEncoder(body).Encode(params)
+		if err := json.NewEncoder(body).Encode(params); err != nil {
+			return nil, err
+		}
 	}
 
-	req, err = http.NewRequest(method, uri, body)
+	req, err = http.NewRequestWithContext(ctx, method, uri, body)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +70,7 @@ func newFileUploadRequest(
 		return nil, err
 	}
 	_, err = io.Copy(part, file)
+
 	if err != nil {
 		return nil, err
 	}
@@ -83,9 +90,9 @@ func newFileUploadRequest(
 	return req, nil
 }
 
-func sendRequestWithRetry(httpClient *http.Client, request *http.Request) (http.Response, error) {
+func sendRequestWithRetry(httpClient *http.Client, request *http.Request) (response http.Response, closeBody func() error, err error) {
 	var res http.Response
-	err := retry.Do(func() error {
+	err = retry.Do(func() error {
 		response, err := httpClient.Do(request)
 		if err != nil {
 			return err
@@ -94,32 +101,37 @@ func sendRequestWithRetry(httpClient *http.Client, request *http.Request) (http.
 		res = *response
 
 		if _, ok := retryStatusCodes[res.StatusCode]; ok {
-			return recoverableHttpStatusError
+			return errRecoverableHTTPStatus
 		} else if res.StatusCode >= 400 {
-			return errors.New(fmt.Sprintf("response status: %s", res.Status))
+			return fmt.Errorf("response status: %s", res.Status)
 		}
 
 		return nil
 	}, retry.RetryIf(func(err error) bool {
-		return errors.Is(err, recoverableHttpStatusError)
+		return errors.Is(err, errRecoverableHTTPStatus)
 	}))
 
-	return res, err
+	if err == nil {
+		closeBody = res.Body.Close
+	}
+
+	return res, closeBody, err
 }
 
 func sendAndReadResponse[T any](httpClient *http.Client, request *http.Request) (T, *int, error) {
 	var result T
 
-	resp, err := sendRequestWithRetry(httpClient, request)
+	resp, closeRequestBody, err := sendRequestWithRetry(httpClient, request)
 	if err != nil {
 		return result, nil, fmt.Errorf("send request: %w", err)
 	}
+
 	defer func() {
-		_ = resp.Body.Close()
+		_ = closeRequestBody()
 	}()
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return result, &resp.StatusCode, fmt.Errorf("read response: %v", err)
+		return result, &resp.StatusCode, fmt.Errorf("read response: %w", err)
 	}
 
 	return result, &resp.StatusCode, nil

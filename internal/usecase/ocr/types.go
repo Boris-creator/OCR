@@ -9,22 +9,22 @@ import (
 type documentRepository interface {
 	GetDocumentByHash(ctx context.Context, hash [16]byte, chatId int64) (*domain.Document, bool, error)
 	CreateDocument(ctx context.Context, document interface {
-		Params() (fileId string, chatId int64, hash [16]byte, ocr []byte)
+		Params() (fileID string, chatId int64, hash [16]byte, ocr []byte)
 	}) (int64, error)
-	BeginTx(context.Context) error
-	Commit(context.Context) error
-	Rollback(context.Context) error
+	BeginTx(ctx context.Context) error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 }
 
 type documentParams struct {
-	fileId string
+	fileID string
 	chatId int64
 	hash   [16]byte
 	ocr    []byte
 }
 
-func (d documentParams) Params() (fileId string, chatId int64, hash [16]byte, ocr []byte) {
-	return d.fileId, d.chatId, d.hash, d.ocr
+func (d documentParams) Params() (fileID string, chatId int64, hash [16]byte, ocr []byte) {
+	return d.fileID, d.chatId, d.hash, d.ocr
 }
 
 type fileStorage interface {
@@ -32,7 +32,7 @@ type fileStorage interface {
 }
 
 type ocrService[R interface{ Text() string }] interface {
-	GetImageOCR(file io.Reader, fileName string) (R, error)
+	GetImageOCR(ctx context.Context, file io.Reader, fileName string) (R, error)
 }
 
 type ocrResult interface {

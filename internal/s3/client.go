@@ -16,5 +16,6 @@ func NewClient(cfg config.S3Config, useSSL bool) (*minio.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("minio.New: %w", err)
 	}
+
 	return client, nil
 }

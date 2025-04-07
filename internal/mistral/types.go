@@ -3,8 +3,8 @@ package mistral
 type documentType string
 
 const (
-	documentUrl documentType = "document_url"
-	imageUrl    documentType = "image_url"
+	_        documentType = "document_url"
+	imageURL documentType = "image_url"
 )
 
 type Request struct {
@@ -33,7 +33,8 @@ type OCRResponse struct {
 			Width  int `json:"width"`
 		} `json:"dimensions"`
 	} `json:"pages"`
-	Model     string `json:"model"`
+	Model string `json:"model"`
+	//nolint:tagliatelle
 	UsageInfo struct {
 		PagesProcessed int `json:"pages_processed"`
 		DocSizeBytes   int `json:"doc_size_bytes"`

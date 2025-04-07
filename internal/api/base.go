@@ -1,8 +1,9 @@
 package api
 
 import (
-	"gopkg.in/telebot.v4"
 	"log/slog"
+
+	"gopkg.in/telebot.v4"
 )
 
 type Handler struct {

@@ -2,13 +2,14 @@ package about
 
 import (
 	"fmt"
-	"gopkg.in/telebot.v4"
 	"log/slog"
 	"tele/internal/api"
+
+	"gopkg.in/telebot.v4"
 )
 
 type aboutService interface {
-	GetSourceCodeUrl() (string, error)
+	GetSourceCodeURL() (string, error)
 }
 
 type Handler struct {
@@ -26,10 +27,10 @@ func New(bot *telebot.Bot, aboutService aboutService, logger *slog.Logger) *Hand
 func (handler *Handler) Handle(ctx telebot.Context) error {
 	const errPrefix = "about.Handle"
 
-	out, err := handler.aboutService.GetSourceCodeUrl()
+	out, err := handler.aboutService.GetSourceCodeURL()
 	if err != nil {
 		return handler.InternalErrorResponse(ctx, fmt.Errorf("%s: %w", errPrefix, err))
 	}
 
-	return ctx.Send(fmt.Sprintf("See my source code at %s", out))
+	return ctx.Send(fmt.Sprintf("See my source code at %s.", out))
 }

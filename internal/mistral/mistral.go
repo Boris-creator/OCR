@@ -1,6 +1,7 @@
 package mistral
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,22 +30,24 @@ func New(cfg config.MistralConfig) Client {
 }
 
 func (client Client) Upload(file io.Reader, fileName string) (res UploadResponse, err error) {
-	var result UploadResponse
 	const errPrefix = "client.Upload"
+
+	var result UploadResponse
 
 	requestParams := map[string]string{
 		"purpose": "ocr",
 	}
+
 	request, err := newFileUploadRequest(filesEndpoint, file, fileName, requestParams)
 	if err != nil {
-		return result, fmt.Errorf("%s: make request: %v", errPrefix, err)
+		return result, fmt.Errorf("%s: make request: %w", errPrefix, err)
 	}
 
 	request.Header.Set("Authorization", "Bearer "+client.cfg.Token)
 
 	resp, err := client.client.Do(request)
 	if err != nil {
-		return result, fmt.Errorf("%s: send request: %v", errPrefix, err)
+		return result, fmt.Errorf("%s: send request: %w", errPrefix, err)
 	}
 
 	defer func() {
@@ -52,21 +55,22 @@ func (client Client) Upload(file io.Reader, fileName string) (res UploadResponse
 	}()
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return result, fmt.Errorf("%s: read response: %v", errPrefix, err)
+		return result, fmt.Errorf("%s: read response: %w", errPrefix, err)
 	}
 
 	return result, nil
 }
 
-func (client Client) GetSignedURL(fileUuid string) (SignedURLResponse, error) {
+func (client Client) GetSignedURL(ctx context.Context, fileUUID string) (SignedURLResponse, error) {
 	const errPrefix = "client.GetSignedURL"
+
 	var result SignedURLResponse
 
-	urlPath, _ := url.JoinPath(filesEndpoint, fileUuid, "url")
+	urlPath, _ := url.JoinPath(filesEndpoint, fileUUID, "url")
 	uri, _ := url.Parse(urlPath)
 	uri.RawQuery = "expiry=24"
 
-	request, err := newRequest(uri.String(), http.MethodGet, nil, client.cfg.Token)
+	request, err := newRequest(ctx, uri.String(), http.MethodGet, nil, client.cfg.Token)
 	if err != nil {
 		return result, fmt.Errorf("%s: make request: %w", errPrefix, err)
 	}
@@ -79,9 +83,10 @@ func (client Client) GetSignedURL(fileUuid string) (SignedURLResponse, error) {
 	return result, nil
 }
 
-func (client Client) GetOCRResult(uri string, docType documentType) (OCRResponse, error) {
-	var result OCRResponse
+func (client Client) GetOCRResult(ctx context.Context, uri string, docType documentType) (OCRResponse, error) {
 	const errPrefix = "client.GetOCRResult"
+
+	var result OCRResponse
 
 	params := Request{
 		Model: ocrModel,
@@ -91,34 +96,35 @@ func (client Client) GetOCRResult(uri string, docType documentType) (OCRResponse
 		},
 	}
 
-	request, err := newRequest(ocrEndpoint, http.MethodPost, &params, client.cfg.Token)
+	request, err := newRequest(ctx, ocrEndpoint, http.MethodPost, &params, client.cfg.Token)
 	if err != nil {
-		return result, fmt.Errorf("%s: make request: %v", errPrefix, err)
+		return result, fmt.Errorf("%s: make request: %w", errPrefix, err)
 	}
 
 	result, _, err = sendAndReadResponse[OCRResponse](client.client, request)
 	if err != nil {
-		return result, fmt.Errorf("%s: %v", errPrefix, err)
+		return result, fmt.Errorf("%s: %w", errPrefix, err)
 	}
 
 	return result, nil
 }
 
-func (client Client) processFile(file io.Reader, fileName string, docType documentType) (*OCRResponse, error) {
+func (client Client) processFile(ctx context.Context, file io.Reader, fileName string, docType documentType) (*OCRResponse, error) {
 	formatError := func(err error) error {
 		return fmt.Errorf("mistral.ProcessFile %s: %w", fileName, err)
 	}
+
 	r, err := client.Upload(file, fileName)
 	if err != nil {
 		return nil, formatError(err)
 	}
 
-	uri, err := client.GetSignedURL(r.ID)
+	uri, err := client.GetSignedURL(ctx, r.ID)
 	if err != nil {
 		return nil, formatError(err)
 	}
 
-	ocr, err := client.GetOCRResult(uri.URL, docType)
+	ocr, err := client.GetOCRResult(ctx, uri.URL, docType)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +132,6 @@ func (client Client) processFile(file io.Reader, fileName string, docType docume
 	return &ocr, nil
 }
 
-func (client Client) GetImageOCR(file io.Reader, fileName string) (*OCRResponse, error) {
-	return client.processFile(file, fileName, imageUrl)
+func (client Client) GetImageOCR(ctx context.Context, file io.Reader, fileName string) (*OCRResponse, error) {
+	return client.processFile(ctx, file, fileName, imageURL)
 }
