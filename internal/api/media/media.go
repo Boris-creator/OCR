@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"tele/internal/api"
 
 	"gopkg.in/telebot.v4"
@@ -63,15 +64,30 @@ func (handler *Handler) noTextFoundResponse(ctx telebot.Context) error {
 }
 
 func (handler *Handler) getImage(c telebot.Context) (file *telebot.File, closeFile func(), err error) {
-	doc := c.Message().Photo
-	if doc == nil {
+	var fileID string
+	var imageFound bool
+
+	photo := c.Message().Photo
+	if photo != nil {
+		imageFound = true
+		fileID = photo.FileID
+	} else {
+		doc := c.Message().Document
+		if doc != nil && strings.HasPrefix(doc.MIME, "image") {
+			imageFound = true
+			fileID = doc.FileID
+		}
+	}
+
+	if !imageFound {
 		return nil, nil, nil
 	}
+
 	bot := handler.Bot
 
-	userFile, err := bot.FileByID(doc.FileID)
+	userFile, err := bot.FileByID(fileID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("bot.FileByID %s: %w", doc.FileID, err)
+		return nil, nil, fmt.Errorf("bot.FileByID %s: %w", fileID, err)
 	}
 
 	frc, err := bot.File(&userFile)
